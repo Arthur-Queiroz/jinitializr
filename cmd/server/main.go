@@ -23,6 +23,11 @@ import (
 const (
 	addr            = ":8080"
 	shutdownTimeout = 10 * time.Second
+
+	// Per-IP rate limit: a burst for normal page loads (catalog + a few
+	// generates), sustained at a modest steady rate.
+	rateLimit = 10 // requests per second
+	rateBurst = 30
 )
 
 func main() {
@@ -46,9 +51,20 @@ func main() {
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 
+	// Cross-cutting concerns via middleware composition (no framework):
+	// RequestID is outermost so every log line and panic carries an id; the
+	// rate limiter is innermost so rejected requests are still logged.
+	limiter := handler.NewRateLimiter(rateLimit, rateBurst)
+	root := handler.Chain(mux,
+		handler.RequestID,
+		handler.Logging(logger),
+		handler.Recover(logger),
+		limiter.Limit,
+	)
+
 	srv := &http.Server{
 		Addr:    addr,
-		Handler: mux,
+		Handler: root,
 		// Timeouts guard against slow/idle clients holding connections open.
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,

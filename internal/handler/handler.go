@@ -27,9 +27,18 @@ func New(gen *generator.Generator, cat *catalog.Catalog, web fs.FS) *Handler {
 // RegisterRoutes mounts the API endpoints on the given mux using Go 1.22+
 // method+path patterns, and serves the embedded SPA on "/" when present.
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /healthz", h.Healthz)
 	mux.HandleFunc("POST /api/generate", h.Generate)
+	mux.HandleFunc("POST /api/preview", h.Preview)
 	mux.HandleFunc("GET /api/catalog", h.Catalog)
 	if h.web != nil {
 		mux.Handle("/", http.FileServer(http.FS(h.web)))
 	}
+}
+
+// Healthz is a liveness probe: it always reports the service is up. It does no
+// dependency checks because the service holds no external connections.
+func (h *Handler) Healthz(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write([]byte(`{"status":"ok"}`))
 }

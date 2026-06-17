@@ -1,19 +1,45 @@
 <script setup>
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { buildProjectTree } from '../composables/useProjectTree'
+import { fetchPreview } from '../composables/usePreview'
 
 const { t, te } = useI18n()
 
 const props = defineProps({
   open: { type: Boolean, default: false },
-  selectedIds: { type: Array, default: () => [] },
-  projectName: { type: String, default: 'my-app' },
+  config: { type: Object, required: true },
 })
 
 const emit = defineEmits(['close'])
 
-const tree = computed(() => buildProjectTree(props.selectedIds, props.projectName))
+// The file list comes from the backend (POST /api/preview) so it always matches
+// what Generate would pack. Refetch each time the modal opens.
+const paths = ref([])
+const loading = ref(false)
+const failed = ref(false)
+
+const tree = computed(() => buildProjectTree(paths.value, props.config.projectName))
+
+async function loadPreview() {
+  loading.value = true
+  failed.value = false
+  try {
+    paths.value = await fetchPreview(props.config)
+  } catch {
+    failed.value = true
+    paths.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+watch(
+  () => props.open,
+  (open) => {
+    if (open) loadPreview()
+  },
+)
 
 const comment = (key) => (key && te(key) ? t(key) : '')
 
@@ -39,13 +65,17 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
         </header>
 
         <div class="tree mono">
-          <div v-for="(line, i) in tree.lines" :key="i" class="tree-line">
-            <span class="connector">{{ line.prefix }}</span><span
-              class="node"
-              :class="{ dir: line.dir }"
-            >{{ line.name }}</span><span v-if="comment(line.comment)" class="comment">
-              # {{ comment(line.comment) }}</span>
-          </div>
+          <p v-if="loading" class="tree-state">{{ t('treeLoading') }}</p>
+          <p v-else-if="failed" class="tree-state">{{ t('treeFailed') }}</p>
+          <template v-else>
+            <div v-for="(line, i) in tree.lines" :key="i" class="tree-line">
+              <span class="connector">{{ line.prefix }}</span><span
+                class="node"
+                :class="{ dir: line.dir }"
+              >{{ line.name }}</span><span v-if="comment(line.comment)" class="comment">
+                # {{ comment(line.comment) }}</span>
+            </div>
+          </template>
         </div>
 
         <footer class="modal-foot mono">
@@ -114,6 +144,11 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 
 .tree-line {
   white-space: pre;
+}
+
+.tree-state {
+  margin: 0;
+  color: var(--ink-soft);
 }
 
 .connector {

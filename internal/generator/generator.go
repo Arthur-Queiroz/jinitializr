@@ -64,23 +64,7 @@ func (g *Generator) Generate(cfg model.ProjectConfig) ([]byte, error) {
 		return nil, err
 	}
 
-	// Base skeleton: always present. The router's server.go is picked per
-	// layout; everything else is shared.
-	plan := map[string]string{
-		"go.mod":                    "common/go.mod",
-		"cmd/api/main.go":           "common/main.go",
-		"internal/config/config.go": "common/config.go",
-		"internal/http/server.go":   template.Layout(routerID),
-		"Makefile":                  "common/Makefile",
-		".gitignore":                "common/gitignore",
-		"README.md":                 "common/README.md",
-	}
-	// Each selected dependency contributes its extra files (catalog-driven).
-	for _, dep := range deps {
-		for _, f := range dep.Files {
-			plan[f.Path] = f.Template
-		}
-	}
+	plan := buildPlan(routerID, deps)
 
 	root := folderName(cfg.ProjectName)
 	files := make(map[string][]byte, len(plan))
@@ -103,6 +87,46 @@ func (g *Generator) Generate(cfg model.ProjectConfig) ([]byte, error) {
 		return nil, fmt.Errorf("zip project: %w", err)
 	}
 	return archive, nil
+}
+
+// Preview returns the sorted list of file paths the project would contain for
+// the given config, without rendering or zipping anything. It is the source of
+// truth behind the frontend's "Explore" tree: the same plan that Generate packs.
+// Paths are relative to the project root (no top-level folder prefix).
+func (g *Generator) Preview(cfg model.ProjectConfig) ([]string, error) {
+	_, routerID, deps, err := g.resolve(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	plan := buildPlan(routerID, deps)
+	paths := make([]string, 0, len(plan))
+	for p := range plan {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
+
+// buildPlan maps each output path to the template that renders it. The base
+// skeleton is always present (the router's server.go is picked per layout);
+// each selected dependency contributes its extra files (catalog-driven).
+func buildPlan(routerID string, deps []model.Dependency) map[string]string {
+	plan := map[string]string{
+		"go.mod":                    "common/go.mod",
+		"cmd/api/main.go":           "common/main.go",
+		"internal/config/config.go": "common/config.go",
+		"internal/http/server.go":   template.Layout(routerID),
+		"Makefile":                  "common/Makefile",
+		".gitignore":                "common/gitignore",
+		"README.md":                 "common/README.md",
+	}
+	for _, dep := range deps {
+		for _, f := range dep.Files {
+			plan[f.Path] = f.Template
+		}
+	}
+	return plan
 }
 
 // resolve validates the config against the catalog (the authoritative source

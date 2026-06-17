@@ -18,6 +18,8 @@
   "explore": "Explore",
   "generate": "Generate",
   "projectStructure": "Project structure",
+  "treeLoading": "Loading project structure…",
+  "treeFailed": "Couldn’t load the structure. Is the backend running?",
   "filesGenerated": "{count} files will be created",
   "generating": "Generating…",
   "noMatch": "No dependencies match your search.",

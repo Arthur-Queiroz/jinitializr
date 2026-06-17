@@ -3,9 +3,11 @@ package generator
 import (
 	"archive/zip"
 	"bytes"
+	"errors"
 	"go/parser"
 	"go/token"
 	"io"
+	"sort"
 	"strings"
 	"testing"
 
@@ -160,6 +162,74 @@ func TestGenerateUnknownRouterFallsBackToStdlib(t *testing.T) {
 	}
 	if !strings.Contains(server, "http.NewServeMux") {
 		t.Errorf("expected stdlib layout, got:\n%s", server)
+	}
+}
+
+// TestPreviewMatchesGenerate guards the invariant that the Explore tree
+// (built from Preview) lists exactly the files Generate packs.
+func TestPreviewMatchesGenerate(t *testing.T) {
+	cfg := model.ProjectConfig{
+		ModulePath:  "github.com/me/demo",
+		ProjectName: "demo",
+		Router:      model.RouterChi,
+		Deps:        []model.Dependency{{ID: "pgx"}, {ID: "sqlc"}},
+	}
+	gen := newGenerator()
+
+	paths, err := gen.Preview(cfg)
+	if err != nil {
+		t.Fatalf("Preview: %v", err)
+	}
+	if !sort.StringsAreSorted(paths) {
+		t.Errorf("preview paths are not sorted: %v", paths)
+	}
+
+	archive, err := gen.Generate(cfg)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	files := unzip(t, archive)
+
+	// Zip entries carry the project-root prefix; strip it to compare.
+	packed := make(map[string]bool, len(files))
+	for name := range files {
+		packed[strings.TrimPrefix(name, "demo/")] = true
+	}
+
+	if len(paths) != len(packed) {
+		t.Errorf("preview lists %d files, zip packs %d", len(paths), len(packed))
+	}
+	for _, p := range paths {
+		if !packed[p] {
+			t.Errorf("preview lists %q but the zip does not contain it", p)
+		}
+	}
+}
+
+// TestGenerateConflictingDepsReturnsConfigError exercises the conflict path
+// using a synthetic catalog, since the v0 catalog has no conflicting pair.
+func TestGenerateConflictingDepsReturnsConfigError(t *testing.T) {
+	cat := &catalog.Catalog{
+		Routers: []catalog.RouterInfo{{ID: string(model.RouterStdlib), Default: true}},
+		Dependencies: []model.Dependency{
+			{ID: "a", Conflicts: []string{"b"}},
+			{ID: "b"},
+		},
+	}
+	gen := New(cat, template.New(), zipper.New())
+	cfg := model.ProjectConfig{
+		ModulePath: "github.com/me/x",
+		Router:     model.RouterStdlib,
+		Deps:       []model.Dependency{{ID: "a"}, {ID: "b"}},
+	}
+
+	if _, err := gen.Generate(cfg); err == nil {
+		t.Fatal("expected a ConfigError for conflicting deps, got nil")
+	} else {
+		var cfgErr *ConfigError
+		if !errors.As(err, &cfgErr) {
+			t.Errorf("error is %T, want *ConfigError: %v", err, err)
+		}
 	}
 }
 

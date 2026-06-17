@@ -10,7 +10,7 @@ import ExploreModal from './components/ExploreModal.vue'
 import Toast from './components/Toast.vue'
 import { useCatalog } from './composables/useCatalog'
 import { useSelection } from './composables/useSelection'
-import { buildProjectTree } from './composables/useProjectTree'
+import { fetchPreview } from './composables/usePreview'
 
 const { t } = useI18n()
 const { routers, dependencies, loading, error, load } = useCatalog()
@@ -25,6 +25,15 @@ const router = ref('stdlib')
 const selectedDeps = computed(() =>
   dependencies.value.filter((d) => selectedIds.value.includes(d.id)),
 )
+
+// The single ProjectConfig payload shared by /api/generate and /api/preview.
+const config = computed(() => ({
+  modulePath: modulePath.value,
+  projectName: projectName.value,
+  goVersion: goVersion.value,
+  router: router.value,
+  deps: selectedDeps.value,
+}))
 
 const exploreOpen = ref(false)
 const toast = ref({ show: false, message: '' })
@@ -48,18 +57,11 @@ watch(routers, (list) => {
 
 async function generate() {
   showToast(t('generating'))
-  const payload = {
-    modulePath: modulePath.value,
-    projectName: projectName.value,
-    goVersion: goVersion.value,
-    router: router.value,
-    deps: selectedDeps.value,
-  }
   try {
     const res = await fetch('/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(config.value),
     })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const blob = await res.blob()
@@ -69,11 +71,10 @@ async function generate() {
     a.download = `${projectName.value || 'project'}.zip`
     a.click()
     URL.revokeObjectURL(url)
-    const { fileCount } = buildProjectTree(selectedIds.value, projectName.value)
-    showToast(t('filesGenerated', { count: fileCount }))
+    // Best-effort file count for the toast; never block the download on it.
+    const files = await fetchPreview(config.value).catch(() => null)
+    if (files) showToast(t('filesGenerated', { count: files.length }))
   } catch (e) {
-    // Backend is still a skeleton (POST /api/generate returns 501) — surface a
-    // friendly message rather than failing silently.
     showToast(t('genFailed'))
   }
 }
@@ -111,8 +112,7 @@ async function generate() {
 
     <ExploreModal
       :open="exploreOpen"
-      :selected-ids="selectedIds"
-      :project-name="projectName"
+      :config="config"
       @close="exploreOpen = false"
     />
 

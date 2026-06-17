@@ -18,6 +18,8 @@
   "explore": "Explorar",
   "generate": "Gerar",
   "projectStructure": "Estrutura do projeto",
+  "treeLoading": "Carregando estrutura do projeto…",
+  "treeFailed": "Não foi possível carregar a estrutura. O backend está rodando?",
   "filesGenerated": "{count} arquivos serão criados",
   "generating": "Gerando…",
   "noMatch": "Nenhuma dependência corresponde à sua busca.",
