@@ -1,0 +1,37 @@
+# Kamal 2 deploy config for J Initializr.
+#
+# This app is a single stateless Go binary: no database, no accessories, no
+# application secrets (it reads no env vars). That makes this config far smaller
+# than a typical Rails/Kamal setup.
+#
+# TLS is terminated by Cloudflare at the edge — the app sits behind a Cloudflare
+# Tunnel — so kamal-proxy serves plain HTTP and the tunnel ingress points at it
+# (service: http://localhost:80). See dev-notes/playbook-cicd-kamal-cloudflare-tunnel.
+
+service: jinitializr
+
+# ghcr image path must be lowercase.
+image: arthur-queiroz/jinitializr
+
+servers:
+  web:
+    - <VPS_IP>
+
+proxy:
+  ssl: false # Cloudflare terminates TLS upstream; tunnel -> kamal-proxy:80
+  host: <DOMAIN>
+  app_port: 8080
+  healthcheck:
+    path: /healthz
+    interval: 3
+    timeout: 3
+
+registry:
+  server: ghcr.io
+  username: arthur-queiroz
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+
+# Build on the deploy host's arch. CI runners are amd64; set to your VPS arch.
+builder:
+  arch: amd64
