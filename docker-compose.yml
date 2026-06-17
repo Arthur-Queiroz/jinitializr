@@ -1,0 +1,13 @@
+# Single stateless service: the Go binary serves the embedded Vue SPA. No DB and
+# no Caddy (unlike jpad) — the binary is the whole app, frontend included.
+#
+# The port is published on the loopback only: the Cloudflare Tunnel (running on
+# the VPS) reaches it at 127.0.0.1:8083; nothing is exposed to the internet
+# directly. The tunnel ingress for jinitializr.devarthur.com.br must point at
+# http://localhost:8083.
+services:
+  app:
+    build: .
+    ports:
+      - "127.0.0.1:8083:8080"
+    restart: unless-stopped

@@ -46,35 +46,33 @@ jobs:
       - name: Go test
         run: go test ./...
 
-  # Deploy only on push to main, after the build gate passes. Kamal builds the
-  # image (Dockerfile rebuilds the SPA + binary), pushes to ghcr and rolls it
-  # out over SSH. The VPS is reached through a Cloudflare Tunnel — no inbound
-  # ports — per dev-notes/playbook-cicd-kamal-cloudflare-tunnel.
-  #
-  # Unlike the Rails playbook, this stateless app needs no master.key and no DB
-  # secrets, so the deploy job is just: kamal deploy.
-  deploy:
-    needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  # Sanity-check that the image builds before we deploy. The real build happens
+  # on the VPS (docker compose up --build); this catches a broken Dockerfile in
+  # CI instead of on the server.
+  docker:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write # push the image to ghcr
-    env:
-      KAMAL_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-
     steps:
       - uses: actions/checkout@v4
+      - name: Validate image build (no run)
+        run: docker compose build
 
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: "3.3"
+  # Deploy only on push to main, after the gates pass. No Kamal, no registry:
+  # the runner SSHes to the VPS through the Cloudflare Tunnel and runs
+  # git reset --hard + docker compose up -d --build (mirrors jpad). The build
+  # happens on the VPS; the image is never pushed anywhere.
+  #
+  # Guard: deploy stays OFF until the infra is ready. Flip it on by setting the
+  # repository variable DEPLOY_ENABLED=true (Settings -> Secrets and variables
+  # -> Actions -> Variables). Until then this job is skipped, not failed.
+  deploy:
+    needs: [build, docker]
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
 
-      - name: Install Kamal
-        run: gem install kamal -v "~> 2.0"
-
-      - uses: docker/setup-buildx-action@v3
-
+    steps:
       - uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -88,11 +86,22 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           cat >> ~/.ssh/config <<'EOF'
-          Host <VPS_IP>
+          Host 2.25.158.85
             User root
-            ProxyCommand cloudflared access ssh --hostname <SSH_HOST>
+            ProxyCommand cloudflared access ssh --hostname ssh.devarthur.com.br
             StrictHostKeyChecking accept-new
           EOF
 
-      - name: Deploy
-        run: kamal deploy
+      - name: Deploy to VPS
+        run: |
+          ssh root@2.25.158.85 '
+            set -e
+            if [ ! -d /opt/jinitializr/.git ]; then
+              git clone https://github.com/Arthur-Queiroz/jinitializr /opt/jinitializr
+            fi
+            cd /opt/jinitializr
+            git fetch --all
+            git reset --hard origin/main
+            docker compose up -d --build
+            docker compose ps
+          '
