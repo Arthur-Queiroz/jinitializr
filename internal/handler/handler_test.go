@@ -11,6 +11,7 @@ import (
 
 	"github.com/Arthur-Queiroz/j-initializr/internal/catalog"
 	"github.com/Arthur-Queiroz/j-initializr/internal/generator"
+	"github.com/Arthur-Queiroz/j-initializr/internal/model"
 	"github.com/Arthur-Queiroz/j-initializr/internal/template"
 	"github.com/Arthur-Queiroz/j-initializr/internal/zipper"
 )
@@ -92,12 +93,36 @@ func TestCatalog(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode catalog: %v", err)
 	}
-	if len(got.Routers) != 3 {
-		t.Errorf("got %d routers, want 3", len(got.Routers))
+	// Assert the known entries are present rather than exact counts, so adding a
+	// new router/dep to the catalog doesn't break this wiring smoke test.
+	for _, id := range []string{"stdlib", "chi", "gin"} {
+		if !hasRouter(got.Routers, id) {
+			t.Errorf("catalog missing router %q", id)
+		}
 	}
-	if len(got.Dependencies) != 4 {
-		t.Errorf("got %d dependencies, want 4", len(got.Dependencies))
+	for _, id := range []string{"pgx", "godotenv", "sqlc", "air"} {
+		if !hasDep(got.Dependencies, id) {
+			t.Errorf("catalog missing dependency %q", id)
+		}
 	}
+}
+
+func hasRouter(routers []catalog.RouterInfo, id string) bool {
+	for _, r := range routers {
+		if r.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func hasDep(deps []model.Dependency, id string) bool {
+	for _, d := range deps {
+		if d.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 func TestPreview(t *testing.T) {
@@ -175,6 +200,125 @@ func TestRateLimitMiddlewareReturns429(t *testing.T) {
 	}
 	if got := call(); got != http.StatusTooManyRequests {
 		t.Errorf("second call = %d, want 429", got)
+	}
+}
+
+func TestGenerateRejectsBodyTooLarge(t *testing.T) {
+	h := newTestHandler()
+	// A modulePath far larger than maxBodyBytes trips MaxBytesReader on decode.
+	body := `{"modulePath":"` + strings.Repeat("a", (1<<20)+1) + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/generate", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	h.Generate(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 for oversized body", rec.Code)
+	}
+}
+
+func TestGenerateConflictingDepsReturns400(t *testing.T) {
+	// Build a handler over a synthetic catalog with a conflicting pair, since the
+	// real catalog has none. This exercises the handler's *ConfigError -> 400.
+	cat := &catalog.Catalog{
+		Routers: []catalog.RouterInfo{{ID: string(model.RouterStdlib), Default: true}},
+		Dependencies: []model.Dependency{
+			{ID: "a", Conflicts: []string{"b"}},
+			{ID: "b"},
+		},
+	}
+	gen := generator.New(cat, template.New(), zipper.New())
+	h := New(gen, cat, nil)
+
+	body := `{"modulePath":"github.com/me/x","router":"stdlib","deps":[{"id":"a"},{"id":"b"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/generate", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	h.Generate(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "cannot be used together") {
+		t.Errorf("body = %q, want the conflict message", rec.Body.String())
+	}
+}
+
+func TestPreviewRejectsBadRequests(t *testing.T) {
+	cases := map[string]string{
+		"invalid json":  `{not json`,
+		"unknown field": `{"modulePath":"github.com/me/x","bogus":1}`,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			h := newTestHandler()
+			req := httptest.NewRequest(http.MethodPost, "/api/preview", strings.NewReader(body))
+			rec := httptest.NewRecorder()
+
+			h.Preview(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("status = %d, want 400; body=%s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestValidModulePath(t *testing.T) {
+	valid := []string{
+		"github.com/me/app",
+		"a/b",
+		"example.com/a-b_c.d~e",
+		"single",
+	}
+	invalid := []string{
+		"",       // empty
+		"/a",     // leading slash
+		"a/",     // trailing slash
+		"a//b",   // empty element
+		"a b",    // space
+		`a\b`,    // backslash
+		"..",     // dot-dot element
+		"a/../b", // traversal
+		"a/!/b",  // illegal char
+	}
+	for _, p := range valid {
+		if !validModulePath(p) {
+			t.Errorf("validModulePath(%q) = false, want true", p)
+		}
+	}
+	for _, p := range invalid {
+		if validModulePath(p) {
+			t.Errorf("validModulePath(%q) = true, want false", p)
+		}
+	}
+}
+
+func TestDownloadName(t *testing.T) {
+	cases := map[string]string{
+		"":     "project.zip",
+		"   ":  "project.zip",
+		"demo": "demo.zip",
+	}
+	for in, want := range cases {
+		if got := downloadName(in); got != want {
+			t.Errorf("downloadName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestClientIP(t *testing.T) {
+	cases := map[string]string{
+		"1.2.3.4:5678": "1.2.3.4",
+		"[::1]:80":     "::1",
+		"noport":       "noport", // no port -> returned as-is
+	}
+	for remote, want := range cases {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.RemoteAddr = remote
+		if got := clientIP(req); got != want {
+			t.Errorf("clientIP(%q) = %q, want %q", remote, got, want)
+		}
 	}
 }
 

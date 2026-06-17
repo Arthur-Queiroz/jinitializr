@@ -47,6 +47,20 @@ func TestZipRoundTrip(t *testing.T) {
 	}
 }
 
+func TestZipEmpty(t *testing.T) {
+	out, err := New().Zip(map[string][]byte{})
+	if err != nil {
+		t.Fatalf("Zip(empty): %v", err)
+	}
+	r, err := zip.NewReader(bytes.NewReader(out), int64(len(out)))
+	if err != nil {
+		t.Fatalf("empty archive is not a valid zip: %v", err)
+	}
+	if len(r.File) != 0 {
+		t.Errorf("got %d entries, want 0", len(r.File))
+	}
+}
+
 func TestZipDeterministic(t *testing.T) {
 	in := map[string][]byte{"b.go": []byte("b"), "a.go": []byte("a"), "c.go": []byte("c")}
 	a, err := New().Zip(in)

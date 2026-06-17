@@ -146,22 +146,105 @@ func TestGenerateFullSelection(t *testing.T) {
 }
 
 func TestGenerateUnknownRouterFallsBackToStdlib(t *testing.T) {
+	// Concern: an unknown router falls back to the stdlib layout. The empty-name
+	// -> "app" default is covered separately by TestFolderName.
 	cfg := model.ProjectConfig{
-		ModulePath: "github.com/me/x",
-		Router:     "bogus",
+		ModulePath:  "github.com/me/x",
+		ProjectName: "x",
+		Router:      "bogus",
 	}
 	archive, err := newGenerator().Generate(cfg)
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
 	files := unzip(t, archive)
-	// Empty project name defaults to "app".
-	server, ok := files["app/internal/http/server.go"]
+	server, ok := files["x/internal/http/server.go"]
 	if !ok {
-		t.Fatalf("missing server.go under default project folder")
+		t.Fatalf("missing server.go")
 	}
 	if !strings.Contains(server, "http.NewServeMux") {
 		t.Errorf("expected stdlib layout, got:\n%s", server)
+	}
+}
+
+func TestGenerateGinProject(t *testing.T) {
+	cfg := model.ProjectConfig{
+		ModulePath:  "github.com/me/g",
+		ProjectName: "g",
+		Router:      model.RouterGin,
+	}
+	archive, err := newGenerator().Generate(cfg)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	files := unzip(t, archive)
+
+	server := files["g/internal/http/server.go"]
+	if !strings.Contains(server, "gin.") {
+		t.Errorf("gin layout not used:\n%s", server)
+	}
+	if !strings.Contains(files["g/go.mod"], "github.com/gin-gonic/gin") {
+		t.Errorf("go.mod missing gin module:\n%s", files["g/go.mod"])
+	}
+	assertGoFilesParse(t, files)
+}
+
+// TestGenerateDeduplicatesDeps guards resolve()'s dedup: a dependency listed
+// twice must be applied once (one require line, one file).
+func TestGenerateDeduplicatesDeps(t *testing.T) {
+	cfg := model.ProjectConfig{
+		ModulePath:  "github.com/me/d",
+		ProjectName: "d",
+		Router:      model.RouterStdlib,
+		Deps:        []model.Dependency{{ID: "pgx"}, {ID: "pgx"}},
+	}
+	archive, err := newGenerator().Generate(cfg)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	files := unzip(t, archive)
+
+	if n := strings.Count(files["d/go.mod"], "github.com/jackc/pgx/v5"); n != 1 {
+		t.Errorf("pgx appears %d times in go.mod, want 1:\n%s", n, files["d/go.mod"])
+	}
+}
+
+func TestFolderName(t *testing.T) {
+	cases := map[string]string{
+		"demo":              "demo",
+		"github.com/me/app": "app", // only the final segment is kept
+		"../etc":            "etc", // no traversal: a single segment, never ".."
+		"a/b/../c":          "c",
+		`a\b`:               "b", // Windows separators normalized
+		"":                  "app",
+		"   ":               "app",
+		".":                 "app",
+		"..":                "app",
+		"/":                 "app",
+	}
+	for in, want := range cases {
+		got := folderName(in)
+		if got != want {
+			t.Errorf("folderName(%q) = %q, want %q", in, got, want)
+		}
+		// The result must always be a single, traversal-free segment.
+		if strings.ContainsAny(got, `/\`) || got == ".." {
+			t.Errorf("folderName(%q) = %q is not a safe single segment", in, got)
+		}
+	}
+}
+
+func TestGoVersion(t *testing.T) {
+	cases := map[string]string{
+		"":     "1.24",
+		"   ":  "1.24",
+		"1.23": "1.23",
+		"1.24": "1.24",
+	}
+	for in, want := range cases {
+		if got := goVersion(in); got != want {
+			t.Errorf("goVersion(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 
