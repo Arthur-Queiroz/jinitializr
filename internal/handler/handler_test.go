@@ -169,7 +169,7 @@ func TestHealthz(t *testing.T) {
 }
 
 func TestRateLimiterBlocksBurst(t *testing.T) {
-	rl := NewRateLimiter(0, 2) // 2 tokens, no refill
+	rl := NewRateLimiter(0, 2, false) // 2 tokens, no refill
 	const ip = "1.2.3.4"
 
 	if !rl.allow(ip) || !rl.allow(ip) {
@@ -184,7 +184,7 @@ func TestRateLimiterBlocksBurst(t *testing.T) {
 }
 
 func TestRateLimitMiddlewareReturns429(t *testing.T) {
-	rl := NewRateLimiter(0, 1)
+	rl := NewRateLimiter(0, 1, false)
 	h := rl.Limit(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -308,16 +308,29 @@ func TestDownloadName(t *testing.T) {
 }
 
 func TestClientIP(t *testing.T) {
-	cases := map[string]string{
-		"1.2.3.4:5678": "1.2.3.4",
-		"[::1]:80":     "::1",
-		"noport":       "noport", // no port -> returned as-is
+	cases := []struct {
+		name       string
+		remote     string
+		cfHeader   string
+		trustProxy bool
+		want       string
+	}{
+		{"ipv4 with port", "1.2.3.4:5678", "", false, "1.2.3.4"},
+		{"ipv6 with port", "[::1]:80", "", false, "::1"},
+		{"no port returned as-is", "noport", "", false, "noport"},
+		{"header ignored when not trusting", "1.2.3.4:5678", "9.8.7.6", false, "1.2.3.4"},
+		{"header honored when trusting", "1.2.3.4:5678", "9.8.7.6", true, "9.8.7.6"},
+		{"trust falls back to RemoteAddr without header", "1.2.3.4:5678", "", true, "1.2.3.4"},
 	}
-	for remote, want := range cases {
+	for _, c := range cases {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		req.RemoteAddr = remote
-		if got := clientIP(req); got != want {
-			t.Errorf("clientIP(%q) = %q, want %q", remote, got, want)
+		req.RemoteAddr = c.remote
+		if c.cfHeader != "" {
+			req.Header.Set("CF-Connecting-IP", c.cfHeader)
+		}
+		if got := clientIP(req, c.trustProxy); got != c.want {
+			t.Errorf("%s: clientIP(%q, cf=%q, trust=%v) = %q, want %q",
+				c.name, c.remote, c.cfHeader, c.trustProxy, got, c.want)
 		}
 	}
 }

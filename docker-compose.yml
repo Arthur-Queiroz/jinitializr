@@ -10,4 +10,8 @@ services:
     build: .
     ports:
       - "127.0.0.1:8083:8080"
+    environment:
+      # Behind the Cloudflare Tunnel: trust CF-Connecting-IP so the per-IP rate
+      # limiter keys on the real client, not on cloudflared's loopback address.
+      TRUST_CLOUDFLARE: "true"
     restart: unless-stopped

@@ -15,6 +15,12 @@ type RateLimiter struct {
 	rate  float64 // tokens added per second
 	burst float64 // maximum tokens a bucket can hold
 
+	// trustProxy makes clientIP honor Cloudflare's CF-Connecting-IP header.
+	// Only enable it when the app sits behind the Cloudflare Tunnel: there the
+	// connection always comes from cloudflared (loopback), so without this every
+	// request shares one bucket and the per-IP limit becomes global.
+	trustProxy bool
+
 	mu      sync.Mutex
 	buckets map[string]*bucket
 }
@@ -26,12 +32,14 @@ type bucket struct {
 
 // NewRateLimiter builds a limiter allowing `burst` requests up front and `rate`
 // requests per second sustained, and starts a background sweeper to drop idle
-// clients.
-func NewRateLimiter(rate, burst float64) *RateLimiter {
+// clients. Set trustProxy when running behind the Cloudflare Tunnel so the
+// limiter keys on the real client IP (CF-Connecting-IP) instead of cloudflared.
+func NewRateLimiter(rate, burst float64, trustProxy bool) *RateLimiter {
 	rl := &RateLimiter{
-		rate:    rate,
-		burst:   burst,
-		buckets: make(map[string]*bucket),
+		rate:       rate,
+		burst:      burst,
+		trustProxy: trustProxy,
+		buckets:    make(map[string]*bucket),
 	}
 	go rl.sweep()
 	return rl
@@ -40,7 +48,7 @@ func NewRateLimiter(rate, burst float64) *RateLimiter {
 // Limit is the middleware: it allows or rejects each request by client IP.
 func (rl *RateLimiter) Limit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !rl.allow(clientIP(r)) {
+		if !rl.allow(clientIP(r, rl.trustProxy)) {
 			w.Header().Set("Retry-After", "1")
 			http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
 			return
@@ -93,10 +101,21 @@ func (rl *RateLimiter) sweep() {
 	}
 }
 
-// clientIP extracts the request's source IP, dropping the port. It trusts the
-// connection's RemoteAddr rather than forwarded headers, which clients can
-// spoof; put a reverse proxy in front if you need X-Forwarded-For handling.
-func clientIP(r *http.Request) string {
+// clientIP extracts the request's source IP, dropping the port.
+//
+// When trustProxy is set, it honors Cloudflare's CF-Connecting-IP, which the
+// edge overwrites on every request — a single, non-appendable value, unlike the
+// multi-hop X-Forwarded-For. This is safe only because the app is reachable
+// solely through the tunnel (the port is bound to loopback), so nothing but
+// Cloudflare can set that header. With trustProxy off (local dev, direct
+// connections) the header is ignored and the connection's RemoteAddr wins,
+// since a direct client could spoof it.
+func clientIP(r *http.Request, trustProxy bool) string {
+	if trustProxy {
+		if ip := r.Header.Get("CF-Connecting-IP"); ip != "" {
+			return ip
+		}
+	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
