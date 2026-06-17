@@ -1,0 +1,39 @@
+# {{.ProjectName}}
+
+Generated with [J Initializr](https://github.com/Arthur-Queiroz/j-initializr).
+
+## Getting started
+
+```sh
+go mod tidy
+{{if .Has "air"}}make dev          # run with hot reload (Air)
+{{else}}go run ./cmd/api
+{{end}}```
+
+The server listens on `:8080` by default. Override it with the `ADDR`
+environment variable.
+
+A health check is available at `GET /healthz`.
+{{if .Has "godotenv"}}
+## Configuration
+
+Copy `.env.example` to `.env` and adjust the values. They are loaded at startup
+via [godotenv](https://github.com/joho/godotenv).
+{{end}}{{if .Has "pgx"}}
+## Database
+
+This project uses [pgx](https://github.com/jackc/pgx) for PostgreSQL. Set
+`DATABASE_URL` (for example `postgres://user:pass@localhost:5432/db`) before
+starting the server.
+{{end}}{{if .Has "sqlc"}}
+## Generating database code
+
+Write your schema in `db/schema.sql` and your queries in `db/query.sql`, then
+run:
+
+```sh
+make sqlc
+```
+
+This generates type-safe Go code with [sqlc](https://sqlc.dev).
+{{end}}

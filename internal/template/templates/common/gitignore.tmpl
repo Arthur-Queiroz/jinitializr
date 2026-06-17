@@ -1,0 +1,16 @@
+# Binaries
+/bin/
+*.exe
+
+# Test and build output
+*.out
+{{- if .Has "air"}}
+
+# Air
+/tmp/
+{{- end}}
+{{- if .Has "godotenv"}}
+
+# Local environment
+.env
+{{- end}}

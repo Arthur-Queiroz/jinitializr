@@ -1,0 +1,7 @@
+-- Database schema for {{.ProjectName}}.
+-- Define your tables here, then run `make sqlc` (or `sqlc generate`).
+
+CREATE TABLE IF NOT EXISTS users (
+    id   BIGSERIAL PRIMARY KEY,
+    name TEXT NOT NULL
+);

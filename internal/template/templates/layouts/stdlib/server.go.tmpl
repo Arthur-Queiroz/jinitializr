@@ -1,0 +1,28 @@
+// Package http wires the HTTP routes and returns a ready-to-run server.
+package http
+
+import (
+	"log/slog"
+	"net/http"
+
+	"{{.ModulePath}}/internal/config"
+{{- if .Has "pgx"}}
+	"github.com/jackc/pgx/v5/pgxpool"
+{{- end}}
+)
+
+// NewServer builds the HTTP server with all routes registered. The logger
+// {{if .Has "pgx"}}and database pool are{{else}}is{{end}} kept here so handlers added later can use {{if .Has "pgx"}}them{{else}}it{{end}}.
+func NewServer(cfg config.Config, logger *slog.Logger{{if .Has "pgx"}}, db *pgxpool.Pool{{end}}) *http.Server {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+
+	return &http.Server{
+		Addr:    cfg.Addr,
+		Handler: mux,
+	}
+}

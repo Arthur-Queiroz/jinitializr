@@ -1,0 +1,30 @@
+// Package http wires the HTTP routes and returns a ready-to-run server.
+package http
+
+import (
+	"log/slog"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+
+	"{{.ModulePath}}/internal/config"
+{{- if .Has "pgx"}}
+	"github.com/jackc/pgx/v5/pgxpool"
+{{- end}}
+)
+
+// NewServer builds the HTTP server with all routes registered. The logger
+// {{if .Has "pgx"}}and database pool are{{else}}is{{end}} kept here so handlers added later can use {{if .Has "pgx"}}them{{else}}it{{end}}.
+func NewServer(cfg config.Config, logger *slog.Logger{{if .Has "pgx"}}, db *pgxpool.Pool{{end}}) *http.Server {
+	r := gin.New()
+	r.Use(gin.Logger(), gin.Recovery())
+
+	r.GET("/healthz", func(c *gin.Context) {
+		c.String(http.StatusOK, "ok")
+	})
+
+	return &http.Server{
+		Addr:    cfg.Addr,
+		Handler: r,
+	}
+}

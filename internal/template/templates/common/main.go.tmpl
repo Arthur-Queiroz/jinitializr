@@ -1,0 +1,64 @@
+// Command api is the entry point of the {{.ProjectName}} service.
+package main
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"{{.ModulePath}}/internal/config"
+	httpserver "{{.ModulePath}}/internal/http"
+{{- if .Has "pgx"}}
+	"{{.ModulePath}}/internal/database"
+{{- end}}
+{{- if .Has "godotenv"}}
+	"github.com/joho/godotenv"
+{{- end}}
+)
+
+func main() {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+{{if .Has "godotenv"}}
+	if err := godotenv.Load(); err != nil {
+		logger.Info("no .env file found, relying on the environment")
+	}
+{{end}}
+	cfg := config.Load()
+{{- if .Has "pgx"}}
+
+	pool, err := database.NewPool(context.Background(), cfg.DatabaseURL)
+	if err != nil {
+		logger.Error("failed to connect to the database", "err", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
+{{- end}}
+
+	srv := httpserver.NewServer(cfg, logger{{if .Has "pgx"}}, pool{{end}})
+
+	go func() {
+		logger.Info("server listening", "addr", cfg.Addr)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("server failed", "err", err)
+			os.Exit(1)
+		}
+	}()
+
+	// Wait for an interrupt, then shut down gracefully.
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	<-stop
+
+	logger.Info("shutting down")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		logger.Error("graceful shutdown failed", "err", err)
+	}
+}

@@ -1,0 +1,98 @@
+/* J Initializr — design tokens (Direction A: editorial / airy).
+   Accent: deep cyan. Density: comfortable. Direction B is intentionally
+   absent — no B tokens, no prototype A/B switch. */
+
+:root {
+  /* accent — deep cyan (light) */
+  --accent: #0e7490;
+  --accent-soft: rgba(14, 116, 144, 0.09);
+
+  /* neutrals — Direction A (light) */
+  --bg: #f6f5f1;
+  --ink: #1a1916;
+  --ink-soft: #6e6b63;
+  --ink-faint: #9a968c;
+  --line: rgba(26, 25, 22, 0.12);
+  --panel: #ffffff;
+
+  /* category accents */
+  --cat-database: #0e7490;
+  --cat-config: #b8860b;
+  --cat-tooling: #7c5cce;
+  --cat-observability: #2a9d8f;
+
+  /* typography */
+  --font-sans: 'Inter Tight', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* shape & rhythm (comfortable) */
+  --radius: 12px;
+  --radius-sm: 8px;
+  --maxw: 1120px;
+  --space: 16px;
+}
+
+[data-theme='dark'] {
+  --accent: #2bc4de;
+  --accent-soft: rgba(43, 196, 222, 0.13);
+
+  --bg: #16150f;
+  --ink: #f1efe7;
+  --ink-soft: #a4a092;
+  --ink-faint: #6e6b60;
+  --line: rgba(241, 239, 231, 0.13);
+  --panel: #211f16;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input,
+select {
+  font-family: inherit;
+}
+
+/* shared helpers */
+.mono {
+  font-family: var(--font-mono);
+}
+
+.label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.hairline {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 0;
+}

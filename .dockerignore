@@ -1,0 +1,8 @@
+.git
+.gitignore
+bin/
+# Rebuilt inside the image (see the web stage in the Dockerfile).
+web/node_modules
+web/dist
+*.zip
+verify_gen.sh

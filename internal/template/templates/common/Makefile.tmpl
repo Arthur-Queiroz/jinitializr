@@ -1,0 +1,23 @@
+.PHONY: run build test tidy{{if .Has "air"}} dev{{end}}{{if .Has "sqlc"}} sqlc{{end}}
+
+run:
+	go run ./cmd/api
+
+build:
+	go build -o bin/api ./cmd/api
+
+test:
+	go test ./...
+
+tidy:
+	go mod tidy
+{{- if .Has "air"}}
+
+dev:
+	air
+{{- end}}
+{{- if .Has "sqlc"}}
+
+sqlc:
+	sqlc generate
+{{- end}}
