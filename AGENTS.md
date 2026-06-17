@@ -40,7 +40,7 @@ No external linters configured yet. If `staticcheck` is available, run it too.
 - Handlers translate errors to HTTP status; internal packages return errors, never
   write HTTP responses.
 - Package names: lowercase singular (`handler`, not `handlers`).
-- No stutter: `catalog.Registry`, not `catalog.CatalogRegistry`.
+- No stutter: `catalog.Catalog`, not `catalog.CatalogStruct`.
 - Routing: stdlib `http.ServeMux` with Go 1.22+ method+path patterns
   (`mux.HandleFunc("POST /api/generate", h.Generate)`).
 - Middleware: `func(http.Handler) http.Handler` composition, no framework.

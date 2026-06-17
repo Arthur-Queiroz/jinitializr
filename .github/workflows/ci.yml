@@ -28,6 +28,15 @@ jobs:
           npm ci
           npm run build
 
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l $(git ls-files '*.go'))
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-clean:"
+            echo "$unformatted"
+            exit 1
+          fi
+
       - name: Go vet
         run: go vet ./...
 
