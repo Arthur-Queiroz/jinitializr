@@ -54,7 +54,13 @@ func main() {
 	// Cross-cutting concerns via middleware composition (no framework):
 	// RequestID is outermost so every log line and panic carries an id; the
 	// rate limiter is innermost so rejected requests are still logged.
-	limiter := handler.NewRateLimiter(rateLimit, rateBurst)
+	//
+	// TRUST_CLOUDFLARE=true (set in the Compose file on the VPS) makes the
+	// limiter key on CF-Connecting-IP. Behind the tunnel every connection comes
+	// from cloudflared, so without it the per-IP limit would collapse into a
+	// single global bucket. Off by default for local/direct runs.
+	trustProxy := os.Getenv("TRUST_CLOUDFLARE") == "true"
+	limiter := handler.NewRateLimiter(rateLimit, rateBurst, trustProxy)
 	root := handler.Chain(mux,
 		handler.RequestID,
 		handler.Logging(logger),
