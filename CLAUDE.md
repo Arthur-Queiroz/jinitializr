@@ -82,6 +82,20 @@ Retorna routers e dependências disponíveis. Chamado uma vez no load do fronten
 ### `POST /api/generate`
 Recebe `ProjectConfig` no body JSON, retorna `application/zip`.
 
+### `POST /api/preview`
+Recebe o mesmo `ProjectConfig`, retorna JSON `{"files": [...]}` com a lista de
+caminhos (ordenada) que o projeto teria — sem renderizar nem zipar. É a **fonte
+única de verdade** da árvore do "Explore" do frontend: o mesmo plano que o
+`generator` empacota. O frontend não recalcula a lista de arquivos.
+
+### `GET /healthz`
+Liveness probe; retorna `{"status":"ok"}`. Não checa dependências (o serviço não
+mantém conexões externas).
+
+> Middleware (composição `func(http.Handler) http.Handler`, sem framework):
+> request ID (`X-Request-ID`), logging estruturado por request, recover de panic
+> e rate limiting por IP (token bucket, stdlib). Tudo montado no `main.go`.
+
 ## Tipos centrais (model/)
 
 ```go
