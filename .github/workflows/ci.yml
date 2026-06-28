@@ -87,7 +87,7 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           cat >> ~/.ssh/config <<'EOF'
-          Host 2.25.158.85
+          Host 187.127.34.186
             User root
             ProxyCommand cloudflared access ssh --hostname ssh.devarthur.com.br
             StrictHostKeyChecking accept-new
@@ -95,7 +95,7 @@ jobs:
 
       - name: Deploy to VPS
         run: |
-          ssh root@2.25.158.85 '
+          ssh root@187.127.34.186 '
             set -e
             if [ ! -d /opt/jinitializr/.git ]; then
               git clone https://github.com/Arthur-Queiroz/jinitializr /opt/jinitializr
